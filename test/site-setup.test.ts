@@ -2,7 +2,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { seedDatabase } from "../src/seed/run.js";
 import { applyHomepageLayout, applyPages, applySections, SECTIONS } from "../src/seed/site-setup.js";
-import { Article, Category, Page } from "../src/shared/models.js";
+import { Article, Category, Media, Page } from "../src/shared/models.js";
 import { sanitizeArticleHtml } from "../src/lib/sanitize.js";
 import { staff, useTestApp } from "./helpers.js";
 
@@ -74,6 +74,51 @@ describe("site setup", () => {
     const sportsId = String(ids.get("sports"));
     expect(settings.published[sportsId].en).toBeGreaterThan(0);
     expect(settings.published[String(ids.get("religion"))]).toEqual({ bn: 0, en: 0 });
+  });
+
+  it("shows a new story in the first block and in its section's block, or only in its section when asked", async () => {
+    const { ids } = await applySections();
+    await applyHomepageLayout(ids, { force: true });
+    await Article.updateMany({}, { $set: { isFeatured: false, pinnedUntil: null } });
+    const editor = await staff("editor");
+    const publish = async (title: string, extra: Record<string, unknown> = {}) => {
+      const created = await request(ctx.app)
+        .post("/api/v1/admin/articles")
+        .set(editor.auth)
+        .send({ locale: "en", title, summary: "A summary that is long enough for the checklist.", body: `<p>${"The match report covers every goal, the substitutions and what the coach said after the final whistle. ".repeat(3)}</p>`, category: String(ids.get("football")), ...extra });
+      const pub = await request(ctx.app).post(`/api/v1/admin/articles/${created.body.data.id}/transition`).set(editor.auth).send({ action: "publish", version: created.body.data.version });
+      expect(pub.status, JSON.stringify([created.body.data?.checklist, pub.body])).toBe(200);
+      return created.body.data.id as string;
+    };
+    const sportsBlock = (home: { sections: { category?: { alternates: { en: string } }; items?: { id: string }[] }[] }) =>
+      home.sections.find((s) => s.category?.alternates.en === "sports")!.items!.map((i) => i.id);
+    const firstBlock = (home: { lead: { id: string }; top: { id: string }[] }) => [home.lead.id, ...home.top.map((s) => s.id)];
+
+    const both = await publish("Golden Boy award goes to a defender");
+    let home = (await request(ctx.app).get("/api/v1/homepage?locale=en")).body.data;
+    expect(firstBlock(home)).toContain(both);
+    expect(sportsBlock(home)).toContain(both);
+
+    const sectionOnly = await publish("League table after the weekend", { skipTop: true });
+    home = (await request(ctx.app).get("/api/v1/homepage?locale=en")).body.data;
+    expect(firstBlock(home)).not.toContain(sectionOnly);
+    expect(sportsBlock(home)[0]).toBe(sectionOnly);
+  });
+
+  it("publishes a story with an image but no alt text (alt text is only recommended)", async () => {
+    const editor = await staff("editor");
+    const media = await request(ctx.app).get("/api/v1/admin/media").set(editor.auth);
+    const image = media.body.data[0];
+    await Media.updateOne({ _id: image.id }, { $set: { alt: {} } });
+    const cat = await Category.findOne({ "slug.en": "world" });
+    const created = await request(ctx.app)
+      .post("/api/v1/admin/articles")
+      .set(editor.auth)
+      .send({ locale: "en", title: "A story with a photo", summary: "A summary that is long enough for the checklist.", body: `<p>${"Delegates met for a second day to discuss funding for adaptation projects in coastal districts. ".repeat(3)}</p>`, category: String(cat!._id), featuredImage: image.id });
+    const check = created.body.data.checklist.find((c: { id: string }) => c.id === "image_alt");
+    expect(check).toMatchObject({ ok: false, blocking: false });
+    const pub = await request(ctx.app).post(`/api/v1/admin/articles/${created.body.data.id}/transition`).set(editor.auth).send({ action: "publish", version: created.body.data.version });
+    expect(pub.status, JSON.stringify(pub.body)).toBe(200);
   });
 
   it("saves more than twelve blocks, ad blocks and widths, and rejects a section block without a section", async () => {

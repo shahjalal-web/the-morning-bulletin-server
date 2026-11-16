@@ -25,6 +25,7 @@ export const categorySchema = z
     parent: objectId.nullable().optional(),
     order: z.number().int().min(0).max(1000).optional(),
     isActive: z.boolean().optional(),
+    showInMenu: z.boolean().optional(),
   })
   .strict();
 export const categoryUpdateSchema = categorySchema.partial().strict();
@@ -33,5 +34,7 @@ export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>;
 
 export const localeQuery = z.object({ locale: localeSchema });
 export const idParams = z.object({ id: objectId });
+/** Sections in their new order; all must share the same parent. */
+export const reorderSchema = z.object({ ids: z.array(objectId).min(1).max(100) }).strict();
 export const deleteQuery = z.object({ moveTo: objectId.optional() });
 export const slugParam = z.string().trim().min(1).max(160).transform((s) => s.normalize("NFC"));

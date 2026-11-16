@@ -28,9 +28,11 @@ export const EDITABLE_FIELDS = [
   "imageCaption",
   "imageCredit",
   "videoUrl",
+  "gallery",
   "seo",
   "isFeatured",
   "isEditorsPick",
+  "skipTop",
   "pinnedUntil",
   "breakingUntil",
 ] as const;
@@ -61,6 +63,10 @@ export function prepareContent<T extends { body?: string; title?: string; summar
   const out: Record<string, unknown> = { ...input };
   if (input.title !== undefined) out.title = sanitizePlain(input.title);
   if (input.summary !== undefined) out.summary = sanitizePlain(input.summary);
+  const gallery = (input as { gallery?: { media: unknown; caption?: string; credit?: string }[] }).gallery;
+  if (gallery !== undefined) {
+    out.gallery = gallery.map((g) => ({ media: g.media, caption: sanitizePlain(g.caption ?? ""), credit: sanitizePlain(g.credit ?? "") }));
+  }
   if (input.body !== undefined) {
     const body = sanitizeArticleHtml(input.body, allowedImageHosts());
     const text = htmlToText(body);
@@ -127,7 +133,9 @@ export async function checklist(article: HydratedDocument<ArticleDoc> | ArticleD
   const text = htmlToText(body);
   const media = article.featuredImage ? await Media.findById(article.featuredImage).lean() : null;
   const alt = article.imageAlt || media?.alt?.[article.locale];
-  const credit = article.imageCredit || media?.credit;
+  // A cover photo taken from the gallery can carry the credit written there.
+  const galleryCredit = (article.gallery ?? []).find((g) => String(g.media) === String(article.featuredImage))?.credit;
+  const credit = article.imageCredit || media?.credit || galleryCredit;
 
   const siteHost = new URL(env().WEB_BASE_URL).host;
   const brokenLinks: string[] = [];
@@ -156,6 +164,8 @@ export async function checklist(article: HydratedDocument<ArticleDoc> | ArticleD
     if (!exists) brokenLinks.push(href);
   }
 
+  const isGallery = article.format === "gallery";
+  const galleryCount = (article.gallery ?? []).length;
   const ownUrl = `${env().WEB_BASE_URL}/${article.locale}/news/${encodeURIComponent(article.slug)}`;
   const canonical = article.seo?.canonicalUrl;
   const hasTranslation = await Article.exists({ translationGroup: article.translationGroup, _id: { $ne: article._id } });
@@ -163,11 +173,17 @@ export async function checklist(article: HydratedDocument<ArticleDoc> | ArticleD
   return [
     { id: "headline", ok: article.title.trim().length >= 5, blocking: true },
     { id: "summary", ok: (article.summary ?? "").trim().length >= 20, blocking: true },
-    { id: "body", ok: text.length >= 50, blocking: true },
+    { id: "body", ok: text.length >= 50 || (isGallery && galleryCount >= 2), blocking: true },
+    ...(isGallery
+      ? [
+          { id: "gallery", ok: galleryCount >= 2, blocking: true },
+          { id: "gallery_captions", ok: galleryCount > 0 && (article.gallery ?? []).every((g) => Boolean(g.caption?.trim())), blocking: false },
+        ]
+      : []),
     { id: "category", ok: Boolean(article.category), blocking: true },
     { id: "attribution", ok: article.authors.length > 0, blocking: true },
     { id: "slug", ok: SLUG_PATTERN.test(article.slug), blocking: true },
-    { id: "image_alt", ok: !article.featuredImage || Boolean(alt), blocking: true },
+    { id: "image_alt", ok: !article.featuredImage || Boolean(alt), blocking: false },
     { id: "image_credit", ok: !article.featuredImage || Boolean(credit), blocking: true },
     { id: "featured_image", ok: Boolean(article.featuredImage), blocking: false },
     { id: "seo_description", ok: Boolean(article.seo?.description), blocking: false },

@@ -127,8 +127,8 @@ export function allowedImageHosts(): string[] {
 /** How many stories use each image (as featured or social image): reuse tracking. */
 export async function usageCounts(ids: Types.ObjectId[]) {
   const rows = await Article.aggregate<{ _id: Types.ObjectId; count: number }>([
-    { $match: { $or: [{ featuredImage: { $in: ids } }, { "seo.socialImage": { $in: ids } }] } },
-    { $project: { refs: { $setUnion: [["$featuredImage"], ["$seo.socialImage"]] } } },
+    { $match: { $or: [{ featuredImage: { $in: ids } }, { "seo.socialImage": { $in: ids } }, { "gallery.media": { $in: ids } }] } },
+    { $project: { refs: { $setUnion: [["$featuredImage"], ["$seo.socialImage"], { $ifNull: ["$gallery.media", []] }] } } },
     { $unwind: "$refs" },
     { $match: { refs: { $in: ids } } },
     { $group: { _id: "$refs", count: { $sum: 1 } } },
@@ -182,7 +182,7 @@ export async function updateMedia(user: Profile, id: Types.ObjectId, input: Medi
   if (input.focalX !== undefined) set.focalX = input.focalX;
   if (input.focalY !== undefined) set.focalY = input.focalY;
   const updated = await Media.findByIdAndUpdate(id, { $set: set }, { returnDocument: "after", runValidators: true });
-  const affected = await Article.find({ status: "published", $or: [{ featuredImage: id }, { "seo.socialImage": id }] })
+  const affected = await Article.find({ status: "published", $or: [{ featuredImage: id }, { "seo.socialImage": id }, { "gallery.media": id }] })
     .select("locale slug previousSlugs translationGroup")
     .lean();
   const counts = await usageCounts([id]);
@@ -193,8 +193,10 @@ export async function updateMedia(user: Profile, id: Types.ObjectId, input: Medi
 async function imageInUse(id: Types.ObjectId, url: string): Promise<boolean> {
   const inHtml = new RegExp(escapeRegex(url));
   const checks = await Promise.all([
-    Article.exists({ $or: [{ featuredImage: id }, { "seo.socialImage": id }, { body: inHtml }] }),
-    ArticleRevision.exists({ $or: [{ "snapshot.featuredImage": String(id) }, { "snapshot.seo.socialImage": String(id) }, { "snapshot.body": inHtml }] }),
+    Article.exists({ $or: [{ featuredImage: id }, { "seo.socialImage": id }, { "gallery.media": id }, { body: inHtml }] }),
+    ArticleRevision.exists({
+      $or: [{ "snapshot.featuredImage": String(id) }, { "snapshot.seo.socialImage": String(id) }, { "snapshot.gallery.media": { $in: [String(id), id] } }, { "snapshot.body": inHtml }],
+    }),
     Page.exists({ body: inHtml }),
     UserProfile.exists({ "author.avatarUrl": url }),
   ]);

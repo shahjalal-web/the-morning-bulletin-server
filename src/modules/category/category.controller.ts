@@ -3,7 +3,7 @@ import { parse } from "../../lib/http.js";
 import type { Revalidator } from "../../lib/revalidate.js";
 import { audit } from "../audit/audit.service.js";
 import * as categories from "./category.service.js";
-import { categorySchema, categoryUpdateSchema, deleteQuery, idParams, localeQuery, slugParam } from "./category.validation.js";
+import { categorySchema, categoryUpdateSchema, deleteQuery, idParams, reorderSchema, localeQuery, slugParam } from "./category.validation.js";
 
 export function createCategoryController(deps: { revalidate: Revalidator }) {
   const refresh = () => deps.revalidate(["taxonomy", "articles"]);
@@ -35,6 +35,14 @@ export function createCategoryController(deps: { revalidate: Revalidator }) {
       await audit(req, { action: "category.update", entityType: "category", entityId: String(id) });
       await refresh();
       res.json({ data: { ...doc.toObject({ versionKey: false }), id: String(doc._id) } });
+    },
+
+    async reorder(req: Request, res: Response) {
+      const { ids } = parse(reorderSchema, req.body);
+      await categories.reorder(ids);
+      await audit(req, { action: "category.reorder", entityType: "category", entityId: String(ids[0]), metadata: { ids: ids.map(String) } });
+      await refresh();
+      res.json({ data: { ordered: ids.length } });
     },
 
     async remove(req: Request, res: Response) {

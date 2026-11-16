@@ -74,7 +74,10 @@ export async function create(input: CategoryInput) {
     bn: await uniqueSlug("bn", input.slug?.bn || name.bn),
     en: await uniqueSlug("en", input.slug?.en || name.en),
   };
-  return Category.create({ ...input, name, slug, description: clean(input.description) });
+  // A new section goes to the end of its menu unless a place is given.
+  const last = input.order === undefined ? await Category.findOne({ parent: input.parent ?? null }).sort({ order: -1 }).select("order").lean() : null;
+  const order = input.order ?? (last ? last.order + 10 : 10);
+  return Category.create({ ...input, order, name, slug, description: clean(input.description) });
 }
 
 /**
@@ -100,6 +103,18 @@ export async function remove(id: Types.ObjectId, moveTo?: Types.ObjectId) {
   return { moved: stories, name: doc.name.en };
 }
 
+/**
+ * Puts sections in the order given (the menu and lists follow it). They must all be
+ * top-level sections, or all subsections of the same section.
+ */
+export async function reorder(ids: Types.ObjectId[]) {
+  if (new Set(ids.map(String)).size !== ids.length) throw new AppError("validation_failed", "A section is listed twice");
+  const docs = await Category.find({ _id: { $in: ids } }).select("parent").lean();
+  if (docs.length !== ids.length) throw notFound("Category");
+  if (new Set(docs.map((d) => String(d.parent ?? ""))).size > 1) throw new AppError("validation_failed", "Only sections under the same parent can be ordered together");
+  await Category.bulkWrite(ids.map((_id, i) => ({ updateOne: { filter: { _id }, update: { $set: { order: (i + 1) * 10 } } } })));
+}
+
 /** Sections nest one level deep: a subsection cannot have children. */
 export async function update(id: Types.ObjectId, input: CategoryUpdateInput) {
   if (input.parent && String(input.parent) === String(id)) throw new AppError("validation_failed", "A section cannot be its own parent");
@@ -116,7 +131,7 @@ export async function update(id: Types.ObjectId, input: CategoryUpdateInput) {
     }
   }
   if (input.description) for (const [k, v] of Object.entries(clean(input.description))) set[`description.${k}`] = v;
-  for (const k of ["parent", "order", "isActive"] as const) if (input[k] !== undefined) set[k] = input[k];
+  for (const k of ["parent", "order", "isActive", "showInMenu"] as const) if (input[k] !== undefined) set[k] = input[k];
   const doc = await Category.findByIdAndUpdate(id, { $set: set }, { returnDocument: "after", runValidators: true });
   if (!doc) throw notFound("Category");
   return doc;

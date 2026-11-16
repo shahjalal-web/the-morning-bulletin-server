@@ -9,6 +9,7 @@ export interface LeanCategory {
   description?: Localized;
   parent?: Types.ObjectId | null;
   order?: number;
+  showInMenu?: boolean;
 }
 
 export function serializeCategory(c: LeanCategory, locale: Locale) {
@@ -18,6 +19,7 @@ export function serializeCategory(c: LeanCategory, locale: Locale) {
     slug: pick(c.slug, locale),
     description: pick(c.description, locale),
     parentId: c.parent ? String(c.parent) : null,
+    inMenu: c.showInMenu !== false,
     alternates: { bn: c.slug.bn ?? null, en: c.slug.en ?? null },
   };
 }

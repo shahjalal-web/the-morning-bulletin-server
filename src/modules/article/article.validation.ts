@@ -61,6 +61,10 @@ export const articleFields = z
     tags: z.array(objectId).max(20).optional(),
     authors: z.array(objectId).min(1).max(10).optional(),
     featuredImage: objectId.nullable().optional(),
+    gallery: z
+      .array(z.object({ media: objectId, caption: optionalText(1000), credit: optionalText(200) }).strict())
+      .max(60)
+      .optional(),
     imageAlt: optionalText(300),
     imageCaption: optionalText(500),
     imageCredit: optionalText(200),
@@ -82,6 +86,7 @@ export const articleFields = z
       .optional(),
     isFeatured: z.boolean().optional(),
     isEditorsPick: z.boolean().optional(),
+    skipTop: z.boolean().optional(),
     pinnedUntil: nullableDate,
     breakingUntil: nullableDate,
   })

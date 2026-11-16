@@ -35,7 +35,7 @@ type ArticleDocument = HydratedDocument<ArticleDoc>;
 const canDelete = (user: Profile, article: ArticleDocument) =>
   hasPermission(user.role, "article:delete") || (isOwner(user, article) && article.status === "draft");
 
-const CURATION_KEYS = ["isFeatured", "isEditorsPick", "pinnedUntil", "breakingUntil"] as const;
+const CURATION_KEYS = ["isFeatured", "isEditorsPick", "skipTop", "pinnedUntil", "breakingUntil"] as const;
 
 /** Every referenced section, tag, image and byline must exist (and bylines must be active staff). */
 async function assertRefs(input: ArticleFieldsInput) {
@@ -43,7 +43,7 @@ async function assertRefs(input: ArticleFieldsInput) {
   if (input.tags?.length && (await Tag.countDocuments({ _id: { $in: input.tags } })) !== new Set(input.tags.map(String)).size) {
     throw new AppError("validation_failed", "Unknown tag");
   }
-  for (const m of [input.featuredImage, input.seo?.socialImage]) {
+  for (const m of [input.featuredImage, input.seo?.socialImage, ...(input.gallery ?? []).map((g) => g.media)]) {
     if (m && !(await Media.exists({ _id: m }))) throw new AppError("validation_failed", "Unknown media item");
   }
   if (input.authors?.length) {
@@ -181,7 +181,7 @@ export async function updateArticle(user: Profile, id: Types.ObjectId, input: Up
       const current: unknown = article.get(k);
       const next: unknown = input[k];
       const asTime = (v: unknown) => (v instanceof Date || typeof v === "string" ? new Date(v).getTime() : null);
-      const same = k === "isFeatured" || k === "isEditorsPick" ? Boolean(next) === Boolean(current) : asTime(next) === asTime(current);
+      const same = k === "isFeatured" || k === "isEditorsPick" || k === "skipTop" ? Boolean(next) === Boolean(current) : asTime(next) === asTime(current);
       if (!same) throw forbidden("Only editors can feature, pin or mark stories as breaking");
     }
   }
@@ -389,6 +389,7 @@ export async function duplicateArticle(user: Profile, id: Types.ObjectId) {
     imageCaption: source.imageCaption,
     imageCredit: source.imageCredit,
     videoUrl: source.videoUrl,
+    gallery: source.gallery,
     seo: { title: source.seo?.title, description: source.seo?.description, focusKeyword: source.seo?.focusKeyword },
   });
   await snapshot(copy, "manual", user);
@@ -411,13 +412,13 @@ export async function deleteArticle(user: Profile, id: Types.ObjectId, storage: 
 
   const revisions = await ArticleRevision.find({ article: id }).select("snapshot").lean();
   const versions = [
-    { featuredImage: article.featuredImage, socialImage: article.seo?.socialImage, body: article.body },
+    { featuredImage: article.featuredImage, socialImage: article.seo?.socialImage, body: article.body, gallery: (article.gallery ?? []).map((g) => g.media) },
     ...revisions.map((r) => {
-      const snap = r.snapshot as { featuredImage?: string; seo?: { socialImage?: string }; body?: string };
-      return { featuredImage: snap.featuredImage, socialImage: snap.seo?.socialImage, body: snap.body };
+      const snap = r.snapshot as { featuredImage?: string; seo?: { socialImage?: string }; body?: string; gallery?: { media?: string }[] };
+      return { featuredImage: snap.featuredImage, socialImage: snap.seo?.socialImage, body: snap.body, gallery: (snap.gallery ?? []).map((g) => g.media) };
     }),
   ];
-  const ids = versions.flatMap((v) => [v.featuredImage, v.socialImage]).filter((v) => v && Types.ObjectId.isValid(String(v)));
+  const ids = versions.flatMap((v) => [v.featuredImage, v.socialImage, ...v.gallery]).filter((v) => v && Types.ObjectId.isValid(String(v)));
   const urls = versions.flatMap((v) => imagesInHtml(v.body));
 
   const wasPublic = article.status === "published";

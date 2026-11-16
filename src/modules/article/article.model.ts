@@ -37,6 +37,8 @@ export interface ArticleDoc {
   imageCredit?: string;
   imageAlt?: string;
   videoUrl?: string;
+  /** Photo gallery: images in order, each with its own description and credit. */
+  gallery: { media: Types.ObjectId; caption?: string; credit?: string }[];
   seo: {
     title?: string;
     description?: string;
@@ -46,6 +48,8 @@ export interface ArticleDoc {
   };
   isFeatured: boolean;
   isEditorsPick: boolean;
+  /** Kept out of the homepage's first block (it still appears in its section's block). */
+  skipTop?: boolean;
   pinnedAt?: Date;
   featuredAt?: Date;
   editorsPickAt?: Date;
@@ -84,6 +88,19 @@ const articleSchema = new Schema<ArticleDoc>(
     imageCredit: { type: String, trim: true, maxlength: 200 },
     imageAlt: { type: String, trim: true, maxlength: 300 },
     videoUrl: { type: String, trim: true, maxlength: 500 },
+    gallery: {
+      type: [
+        new Schema(
+          {
+            media: { type: Schema.Types.ObjectId, ref: "Media", required: true },
+            caption: { type: String, trim: true, maxlength: 1000 },
+            credit: { type: String, trim: true, maxlength: 200 },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     seo: {
       title: { type: String, trim: true, maxlength: 120 },
       description: { type: String, trim: true, maxlength: 320 },
@@ -93,6 +110,7 @@ const articleSchema = new Schema<ArticleDoc>(
     },
     isFeatured: { type: Boolean, default: false },
     isEditorsPick: { type: Boolean, default: false },
+    skipTop: { type: Boolean, default: false },
     pinnedAt: { type: Date },
     featuredAt: { type: Date },
     editorsPickAt: { type: Date },

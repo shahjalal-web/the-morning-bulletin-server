@@ -9,7 +9,7 @@ export type Role = (typeof ROLES)[number];
 export const ARTICLE_STATUSES = ["draft", "in_review", "scheduled", "published", "archived"] as const;
 export type ArticleStatus = (typeof ARTICLE_STATUSES)[number];
 
-export const ARTICLE_FORMATS = ["standard", "explainer", "opinion", "photo", "video"] as const;
+export const ARTICLE_FORMATS = ["standard", "explainer", "opinion", "photo", "video", "gallery"] as const;
 export type ArticleFormat = (typeof ARTICLE_FORMATS)[number];
 
 export const AD_PLACEMENT_KEYS = [

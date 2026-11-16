@@ -30,7 +30,7 @@ const articleFields = {
   slug: str,
   summary: str,
   body: { type: "string", description: "HTML; sanitized on the server against a strict allowlist" },
-  format: { type: "string", enum: ["standard", "explainer", "opinion", "photo", "video"] },
+  format: { type: "string", enum: ["standard", "explainer", "opinion", "photo", "video", "gallery"] },
   category: { type: ["string", "null"] },
   tags: { type: "array", items: str },
   authors: { type: "array", items: str },

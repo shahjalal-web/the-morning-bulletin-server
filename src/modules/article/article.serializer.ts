@@ -25,9 +25,11 @@ export interface LeanArticle {
   imageCaption?: string;
   imageCredit?: string;
   videoUrl?: string;
+  gallery?: { media: LeanMedia | null; caption?: string; credit?: string }[];
   seo?: { title?: string; description?: string; canonicalUrl?: string; socialImage?: LeanMedia | null };
   isFeatured?: boolean;
   isEditorsPick?: boolean;
+  skipTop?: boolean;
   breakingUntil?: Date | null;
   publishedAt?: Date | null;
   contentUpdatedAt?: Date | null;
@@ -67,6 +69,11 @@ export function serializeArticleDetail(
     body: a.body ?? "",
     tags: (a.tags ?? []).map((t) => serializeTag(t, a.locale)).filter((t) => t.slug),
     videoUrl: a.videoUrl ?? null,
+    // Gallery photos in order, each with its own description and credit (missing images are skipped).
+    gallery: (a.gallery ?? []).flatMap((g) => {
+      const img = serializeImage(g.media, a.locale, { caption: g.caption, credit: g.credit });
+      return img ? [img] : [];
+    }),
     seo: {
       title: a.seo?.title ?? "",
       description: a.seo?.description ?? "",

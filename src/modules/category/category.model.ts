@@ -12,6 +12,8 @@ export interface CategoryDoc {
   parent?: Types.ObjectId | null;
   order: number;
   isActive: boolean;
+  /** Shown in the site's menu bar (top-level) or its dropdown (subsection). The section page works either way. */
+  showInMenu: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +32,7 @@ const categorySchema = new Schema<CategoryDoc>(
     parent: { type: Schema.Types.ObjectId, ref: "Category", default: null },
     order: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    showInMenu: { type: Boolean, default: true },
   },
   { timestamps: true },
 );

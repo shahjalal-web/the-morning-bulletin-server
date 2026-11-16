@@ -52,6 +52,35 @@ describe("managing sections", () => {
     expect((await UserProfile.findById(reader._id).lean())!.followedCategories.map(String)).toEqual([String(national!._id)]);
   });
 
+  it("reorders sections for the menu, only among siblings", async () => {
+    const admin = await staff("admin");
+    const author = await staff("author");
+    const top = await Category.find({ parent: null, isActive: true }).sort({ order: 1, _id: 1 }).lean();
+    const wanted = [...top].reverse().map((c) => String(c._id));
+    expect((await request(ctx.app).put(`${url}/order`).set(author.auth).send({ ids: wanted })).status).toBe(403);
+    const ok = await request(ctx.app).put(`${url}/order`).set(admin.auth).send({ ids: wanted });
+    expect(ok.status).toBe(200);
+    const menu = (await request(ctx.app).get("/api/v1/categories?locale=en")).body.data.filter((c: { parentId?: string | null }) => !c.parentId);
+    expect(menu.map((c: { id: string }) => c.id)).toEqual(wanted);
+
+    const sports = await Category.findOne({ "slug.en": "sports" }).lean();
+    const child = await Category.findOne({ parent: sports!._id }).lean();
+    const mixed = await request(ctx.app).put(`${url}/order`).set(admin.auth).send({ ids: [String(sports!._id), String(child!._id)] });
+    expect(mixed.status).toBe(422);
+    const twice = await request(ctx.app).put(`${url}/order`).set(admin.auth).send({ ids: [String(sports!._id), String(sports!._id)] });
+    expect(twice.status).toBe(422);
+  });
+
+  it("hides a section from the menu bar while its page keeps working", async () => {
+    const admin = await staff("admin");
+    const sports = await Category.findOne({ "slug.en": "sports" }).lean();
+    const inMenu = async () => (await request(ctx.app).get("/api/v1/categories?locale=en")).body.data.find((c: { id: string }) => c.id === String(sports!._id)).inMenu;
+    expect(await inMenu()).toBe(true);
+    expect((await request(ctx.app).patch(`${url}/${sports!._id}`).set(admin.auth).send({ showInMenu: false })).status).toBe(200);
+    expect(await inMenu()).toBe(false);
+    expect((await request(ctx.app).get("/api/v1/categories/sports?locale=en")).status).toBe(200);
+  });
+
   it("will not delete a section that still has subsections", async () => {
     const admin = await staff("admin");
     const sports = await Category.findOne({ "slug.en": "sports" });

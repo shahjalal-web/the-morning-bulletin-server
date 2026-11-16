@@ -72,6 +72,7 @@ export async function getPublishedBySlug(locale: Locale, slug: string) {
     .populate("authors", AUTHOR_FIELDS)
     .populate("featuredImage", MEDIA_FIELDS)
     .populate("seo.socialImage", MEDIA_FIELDS)
+    .populate("gallery.media", MEDIA_FIELDS)
     .lean<LeanArticle>();
   if (!doc) return null;
   const translations = await Article.find({
@@ -218,12 +219,12 @@ const TOP_COUNT = 3;
 export async function homepage(locale: Locale) {
   const now = new Date();
   const pub = publishedFilter(locale, now);
-  // The lead and top stories never repeat elsewhere; other modules may overlap with the latest feed.
+  // The lead and top stories are not repeated in the other lists; section blocks show their newest stories regardless.
   const prominent: Types.ObjectId[] = [];
-  const take = async (filter: QueryFilter<ArticleDoc>, limit: number, decidedAt?: "pinnedAt" | "featuredAt" | "editorsPickAt") => {
+  const take = async (filter: QueryFilter<ArticleDoc>, limit: number, decidedAt?: "pinnedAt" | "featuredAt" | "editorsPickAt", repeat = false) => {
     // Editors' choices go by when they were made (stories chosen before this was tracked fall back to their last edit).
     const order: Record<string, 1 | -1> = decidedAt ? { [decidedAt]: -1, updatedAt: -1, _id: -1 } : { publishedAt: -1, _id: -1 };
-    const docs = await cardQuery({ ...pub, ...filter, _id: { $nin: prominent } })
+    const docs = await cardQuery({ ...pub, ...filter, ...(repeat ? {} : { _id: { $nin: prominent } }) })
       .sort(order)
       .limit(limit)
       .lean<LeanArticle[]>();
@@ -232,27 +233,24 @@ export async function homepage(locale: Locale) {
   const markProminent = (items: ReturnType<typeof serializeArticleCard>[]) =>
     prominent.push(...items.map((i) => new Types.ObjectId(i.id)));
 
+  // The first block is "Latest": a pinned story leads, then stories ticked as top stories,
+  // and the rest are the newest stories.
   const pinned = await take({ pinnedUntil: { $gt: now } }, 1, "pinnedAt");
-  const lead = pinned[0] ?? (await take({ isFeatured: true }, 1, "featuredAt"))[0] ?? (await take({}, 1))[0] ?? null;
+  // Stories marked "not in the first block" only appear in their section's block.
+  const inTop = { skipTop: { $ne: true } };
+  const lead = pinned[0] ?? (await take({ ...inTop, isFeatured: true }, 1, "featuredAt"))[0] ?? (await take(inTop, 1))[0] ?? null;
   if (lead) markProminent([lead]);
-  const topFeatured = await take({ isFeatured: true }, TOP_COUNT, "featuredAt");
-  markProminent(topFeatured);
-  // Under the lead: featured stories, then editors' picks, then the newest.
-  const top = [...topFeatured];
+  const top = await take({ ...inTop, isFeatured: true }, TOP_COUNT, "featuredAt");
+  markProminent(top);
   if (top.length < TOP_COUNT) {
-    const picks = await take({ isEditorsPick: true }, TOP_COUNT - top.length, "editorsPickAt");
-    markProminent(picks);
-    top.push(...picks);
-  }
-  if (top.length < TOP_COUNT) {
-    const newest = await take({}, TOP_COUNT - top.length);
+    const newest = await take(inTop, TOP_COUNT - top.length);
     markProminent(newest);
     top.push(...newest);
   }
   const latest = await take({}, 8);
   const editorsPicks = await take({ isEditorsPick: true }, 4, "editorsPickAt");
   const explainers = await take({ format: "explainer" }, 4);
-  const visual = await take({ format: { $in: ["photo", "video"] } }, 6);
+  const visual = await take({ format: { $in: ["photo", "video", "gallery"] } }, 6);
   const opinion = await take({ format: "opinion" }, 4);
 
   const settings = await SiteSettings.findOne({ key: "site" })
@@ -274,7 +272,8 @@ export async function homepage(locale: Locale) {
     const children = await Category.find({ parent: s.category._id, isActive: true })
       .select("_id")
       .lean<{ _id: Types.ObjectId }[]>();
-    const items = await take({ category: { $in: [s.category._id, ...children.map((c) => c._id)] } }, s.count ?? DEFAULT_COUNT[s.variant]);
+    // A section shows its newest stories, even ones also shown in the first block.
+    const items = await take({ category: { $in: [s.category._id, ...children.map((c) => c._id)] } }, s.count ?? DEFAULT_COUNT[s.variant], undefined, true);
     if (items.length === 0) continue;
     sections.push({ kind: "section", category: serializeCategory(s.category, locale), variant: s.variant, width, items });
   }
