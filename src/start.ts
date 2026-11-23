@@ -8,6 +8,7 @@ import { logger } from "./lib/logger.js";
 import { smtpMailer } from "./lib/mailer.js";
 import { cloudinaryStorage } from "./modules/media/media.service.js";
 import { webhookRevalidator } from "./lib/revalidate.js";
+import { startPopularWatch } from "./modules/article/article.popular-watch.js";
 import { startScheduler } from "./modules/article/article.scheduler.js";
 
 export async function startServer(mongoUri?: string): Promise<Server> {
@@ -23,6 +24,7 @@ export async function startServer(mongoUri?: string): Promise<Server> {
     mailer: smtpMailer,
   });
   const stopScheduler = e.SCHEDULER_ENABLED ? startScheduler(webhookRevalidator, e.SCHEDULER_INTERVAL_MS) : () => {};
+  const stopPopularWatch = e.SCHEDULER_ENABLED ? startPopularWatch(webhookRevalidator, e.POPULAR_CHECK_MS) : () => {};
 
   const server = app.listen(e.PORT, () => {
     logger.info({ port: e.PORT, env: e.NODE_ENV }, "API listening");
@@ -35,6 +37,7 @@ export async function startServer(mongoUri?: string): Promise<Server> {
   const shutdown = (signal: string) => {
     logger.info({ signal }, "shutting down");
     stopScheduler();
+    stopPopularWatch();
     server.close(async () => {
       await disconnectDb();
       process.exit(0);

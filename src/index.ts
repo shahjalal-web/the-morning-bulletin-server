@@ -6,6 +6,7 @@ import { connectDb } from "./lib/db.js";
 import { FirebaseIdentityProvider } from "./lib/identity.js";
 import { smtpMailer } from "./lib/mailer.js";
 import { webhookRevalidator } from "./lib/revalidate.js";
+import { createThrottledPopularCheck } from "./modules/article/article.popular-watch.js";
 import { createThrottledTick } from "./modules/article/article.scheduler.js";
 import { cloudinaryStorage } from "./modules/media/media.service.js";
 
@@ -28,11 +29,13 @@ function ensureDb(): Promise<unknown> {
 }
 
 const tick = createThrottledTick(webhookRevalidator, env().SCHEDULER_INTERVAL_MS);
+const popularCheck = createThrottledPopularCheck(webhookRevalidator, env().POPULAR_CHECK_MS);
 
 const prepare: RequestHandler = async (_req, _res, next) => {
   try {
     await ensureDb();
     await tick();
+    await popularCheck();
     next();
   } catch (err) {
     next(err);

@@ -50,6 +50,8 @@ const EnvSchema = z
     CRON_SECRET: optionalString,
     SCHEDULER_ENABLED: boolish.default(true),
     SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(5_000).max(600_000).default(30_000),
+    /** How often the "Most read" list is compared with the last one (the site refreshes only on a change). */
+    POPULAR_CHECK_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(60 * 60_000),
   })
   .superRefine((env, ctx) => {
     for (const key of ["REVALIDATE_SECRET", "INTERNAL_API_KEY", "CRON_SECRET"] as const) {

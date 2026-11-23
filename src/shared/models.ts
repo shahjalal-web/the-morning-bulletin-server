@@ -5,6 +5,7 @@
 import { AdPlacement } from "../modules/ad/ad.model.js";
 import { ArticleDailyStat, ReferrerDailyStat } from "../modules/analytics/analytics.model.js";
 import { Article, ArticleRevision } from "../modules/article/article.model.js";
+import { PopularSnapshot } from "../modules/article/article.popular-watch.js";
 import { AuditLog } from "../modules/audit/audit.model.js";
 import { Bookmark } from "../modules/bookmark/bookmark.model.js";
 import { Category } from "../modules/category/category.model.js";
@@ -27,6 +28,7 @@ export {
   Media,
   NewsletterSubscriber,
   Page,
+  PopularSnapshot,
   ReferrerDailyStat,
   RoleModel,
   SiteSettings,
@@ -50,4 +52,5 @@ export const allModels = [
   AdPlacement,
   Page,
   RoleModel,
+  PopularSnapshot,
 ];
